@@ -860,8 +860,8 @@ class LocalTools(
             tools.add(me.rerere.rikkahub.data.ai.tools.local.getJobHistoryTool(scheduledJobRepository, scheduledJobRunRepository))
         }
         if (options.contains(LocalToolOption.ScreenAutomation)) {
-            tools.add(tapTool(invocationContext, interactiveToolStreamer))
-            tools.add(longPressTool(invocationContext, interactiveToolStreamer))
+            tools.add(tapTool(context, invocationContext, interactiveToolStreamer))
+            tools.add(longPressTool(context, invocationContext, interactiveToolStreamer))
             tools.add(swipeTool(invocationContext, interactiveToolStreamer))
             tools.add(readWindowTreeTool(invocationContext, interactiveToolStreamer))
             tools.add(findNodeTool(invocationContext, interactiveToolStreamer))
@@ -870,6 +870,7 @@ class LocalTools(
             tools.add(scrollTool(invocationContext, interactiveToolStreamer))
             tools.add(globalActionTool(invocationContext, interactiveToolStreamer))
             tools.add(takeScreenshotTool(context))  // take_screenshot IS the screenshot; skip auto-stream
+            tools.add(screenZoomTool(context))
             tools.add(me.rerere.rikkahub.data.ai.tools.local.wakeScreenTool(context))
         }
         if (options.contains(LocalToolOption.AppLauncher)) {
