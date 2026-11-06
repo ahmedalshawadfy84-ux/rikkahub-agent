@@ -245,6 +245,62 @@ object ShizukuManager {
         return parseExecResponse(raw)
     }
 
+    // --- iris: raw capture + touch injection over the same bound service ----------------
+
+    /**
+     * Runs [call] against the bound user service with a hard [timeoutMs]. Null on ANY
+     * failure — not installed, not running, bind failed, call threw, or timeout (in which
+     * case the binding is reset, mirroring [exec]). Iris callers treat null as "fall back
+     * honestly to the next source" instead of surfacing an error envelope.
+     */
+    private suspend fun <T> withApi(
+        context: Context,
+        timeoutMs: Long,
+        call: (IShizukuUserService) -> T?,
+    ): T? {
+        if (ShizukuStatusMapper.errorFor(status(context)) != null) return null
+        val version = runCatching { Shizuku.getVersion() }.getOrNull() ?: return null
+        if (version < 10) return null
+        val api = when (val bindResult = ensureBound(context)) {
+            is BindResult.Connected -> bindResult.service
+            is BindResult.Failure -> return null
+        }
+        val result = withTimeoutOrNull(timeoutMs) {
+            runInterruptible(Dispatchers.IO) {
+                runCatching { call(api) }
+                    .onFailure { Log.e(TAG, "iris user-service call threw", it) }
+                    .getOrNull()
+            }
+        }
+        if (result == null) runCatching { resetBinding() }
+        return result
+    }
+
+    /**
+     * PNG bytes of the current screen, captured with the shell UID (`screencap -p`).
+     * Raw bytes over the AIDL boundary — [exec]'s string envelope caps stdout at 8 KB,
+     * far below a screenshot's size. Null when Shizuku is unavailable or the command fails.
+     */
+    suspend fun screencap(context: Context, timeoutMs: Int = 10_000): ByteArray? =
+        withApi(context, timeoutMs.toLong() + CALL_TIMEOUT_SLACK_MS) { it.screencap(timeoutMs) }
+
+    /**
+     * One touch event injected with the shell UID's INJECT_EVENTS right — the Iris "fast
+     * hand": 2-6 ms versus 40-100 ms for accessibility gestures, accepted by games that
+     * drop synthesized accessibility strokes. The caller composes DOWN/MOVE/UP sequences.
+     * Returns false when Shizuku is unavailable.
+     */
+    suspend fun injectTouch(
+        context: Context,
+        action: Int,
+        x: Float,
+        y: Float,
+        pressure: Float,
+        downTime: Long,
+        eventTime: Long,
+    ): Boolean = withApi(context, 3_000L) { it.injectTouch(action, x, y, pressure, downTime, eventTime) }
+        ?: false
+
     private suspend fun ensureBound(context: Context): BindResult {
         bindLock.withLock { service?.let { return BindResult.Connected(it) } }
         val deferred: CompletableDeferred<BindResult>
