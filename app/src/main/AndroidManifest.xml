@@ -27,6 +27,8 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <!-- Iris: the screen-broadcast mirror (IrisProjectionService). -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
   <uses-permission
     android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -340,6 +342,14 @@
         android:name="android.accessibilityservice"
         android:resource="@xml/accessibility_service_config" />
     </service>
+
+    <!-- Iris: MediaProjection screen mirror for the vision tools (instant frames, no
+         ~1/sec accessibility rate limit). Started only after the user's explicit consent
+         from Settings; stopped from its notification action or the settings row. -->
+    <service
+      android:name=".iris.IrisProjectionService"
+      android:exported="false"
+      android:foregroundServiceType="mediaProjection" />
 
     <service
       android:name=".service.RikkaNotificationListenerService"
