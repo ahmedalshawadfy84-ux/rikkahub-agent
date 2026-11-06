@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -35,8 +37,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.RadioButton
 import me.rerere.rikkahub.data.ai.tools.local.AccessibilityServiceHandle
 import me.rerere.rikkahub.data.ai.tools.local.PermissionHelper
+import me.rerere.rikkahub.iris.IrisProjectionService
+import me.rerere.rikkahub.iris.IrisVisionSource
 import me.rerere.rikkahub.service.ActionLogEntry
 import me.rerere.rikkahub.service.RikkaAccessibilityService
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -89,6 +96,28 @@ fun SettingAccessibilityPage() {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // ── Iris: vision source + screen broadcast ──
+    var irisSource by remember { mutableStateOf(IrisVisionSource.current(context)) }
+    var projectionRunning by remember { mutableStateOf(IrisProjectionService.isRunning()) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                projectionRunning = IrisProjectionService.isRunning()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val projectionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && data != null) {
+            IrisProjectionService.start(context, result.resultCode, data)
+            projectionRunning = true
+        }
     }
 
     Scaffold(
@@ -144,6 +173,63 @@ fun SettingAccessibilityPage() {
                         Text(stringResource(R.string.setting_page_accessibility_open_settings))
                     },
                 )
+            }
+
+            // Iris: vision source card
+            Text(
+                text = "مصدر رؤية الشاشة · Vision source (Iris)",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+            )
+            CardGroup {
+                item(
+                    headlineContent = { Text("بدء/إيقاف بث الشاشة · Screen broadcast") },
+                    supportingContent = {
+                        Text(
+                            if (projectionRunning) {
+                                "البث يعمل — اللقطات فورية بلا حد معدل. أوقفه لتوفير البطارية."
+                            } else {
+                                "MediaProjection: لقطات فورية عند الطلب (بلا حد ~لقطة/ثانية). يتطلب موافقة واحدة عند التشغيل."
+                            }
+                        )
+                    },
+                    onClick = {
+                        if (projectionRunning) {
+                            IrisProjectionService.stop(context)
+                            projectionRunning = false
+                        } else {
+                            val mgr = context.getSystemService(
+                                Context.MEDIA_PROJECTION_SERVICE
+                            ) as MediaProjectionManager
+                            projectionLauncher.launch(mgr.createScreenCaptureIntent())
+                        }
+                    },
+                )
+                IrisVisionSource.entries.forEach { src ->
+                    item(
+                        headlineContent = { Text(src.label) },
+                        supportingContent = {
+                            Text(
+                                when (src) {
+                                    IrisVisionSource.AUTO -> "Automatic: broadcast mirror when running, else accessibility capture"
+                                    IrisVisionSource.ACCESSIBILITY -> "الالتقاط الرسمي عبر خدمة الوصول (~لقطة/ثانية)"
+                                    IrisVisionSource.PROJECTION -> "يتطلب تشغيل البث أعلاه أولاً"
+                                    IrisVisionSource.SHIZUKU -> "يتطلب Shizuku مثبتاً ومفعّلاً"
+                                    IrisVisionSource.TEXT_ONLY -> "الأوفر: شجرة الوصول نصياً، لا صور إطلاقاً"
+                                }
+                            )
+                        },
+                        trailingContent = {
+                            RadioButton(
+                                selected = irisSource == src,
+                                onClick = {
+                                    irisSource = src
+                                    IrisVisionSource.set(context, src)
+                                },
+                            )
+                        },
+                    )
+                }
             }
 
             // Activity overlay card
